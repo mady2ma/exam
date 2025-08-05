@@ -1,0 +1,67 @@
+name: Exam Paper CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        npm install
+        cd client && npm install
+        cd ..
+    
+    - name: Run backend tests
+      env:
+        MONGODB_URI: mongodb://root:example@localhost:27017/test?authSource=admin
+        JWT_SECRET: testsecret
+      run: npm test
+    
+    - name: Run frontend tests
+      working-directory: client
+      run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        push: true
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/exam-paper-app:latest
